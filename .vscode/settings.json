@@ -1,0 +1,6 @@
+{
+  "python.pythonPath": "/Users/Ortix/anaconda3/envs/thesis/bin/python",
+  "python.linting.pylintEnabled": true,
+  "python.linting.enabled": true,
+  "python.formatting.provider": "yapf"
+}
