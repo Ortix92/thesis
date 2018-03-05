@@ -2,8 +2,10 @@ from keras.layers import Input, Dense
 from keras.callbacks import TensorBoard
 from keras.models import Model, Sequential
 from keras.datasets import mnist
+from keras import regularizers
 import matplotlib.pyplot as plt
 import numpy as np
+from time import time
 
 
 def getSamples(n):
@@ -27,15 +29,14 @@ x_test = (pos_arr[int(n * 0.1):] + 1) / 2
 
 # Dimension of z space
 z_dim = 1
-dense_dim = 256
 data_dim = 2
 
 inputs = Input(shape=(data_dim, ))
-encoded = Dense(dense_dim, activation='relu')(inputs)
-encoded = Dense(dense_dim, activation='relu')(encoded)
+encoded = Dense(1024, activation='relu')(inputs)
+encoded = Dense(512, activation='relu')(encoded)
 encoded = Dense(z_dim, activation='relu', name='latent_space')(encoded)
-decoded = Dense(dense_dim, activation='relu')(encoded)
-decoded = Dense(dense_dim, activation='relu')(decoded)
+decoded = Dense(512, activation='relu')(encoded)
+decoded = Dense(1024, activation='relu')(decoded)
 outputs = Dense(data_dim, activation='sigmoid', name='output')(decoded)
 
 # Build autoencoder directly from layers
@@ -52,8 +53,9 @@ decoder = Model(latent_input,
                 autoencoder.layers[-1](autoencoder.layers[-2](autoencoder.layers[-3](latent_input))))
 
 # Compile the model
-autoencoder.compile(optimizer='adam', loss='binary_crossentropy')
+autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
 
+log_dir = '/tmp/autoencoder/run_'+ str(time())
 # Train the model
 autoencoder.fit(
     x_train,
@@ -61,7 +63,7 @@ autoencoder.fit(
     epochs=150,
     batch_size=150,
     shuffle=True,
-    callbacks=[TensorBoard(log_dir='/tmp/autoencoder')],
+    callbacks=[TensorBoard(log_dir=(log_dir))],
     validation_data=(x_test, x_test))
 # Check
 # encode and decode some digits
