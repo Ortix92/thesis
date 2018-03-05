@@ -18,4 +18,3 @@ model.compile(
 x = Input(shape=(784,))
 # This works, and returns the 10-way softmax we defined above.
 y = model(x)
-y.summary()

@@ -15,9 +15,15 @@ def getSamples(n):
     return angles, x, y
 
 
-angles, x_pos, y_pos = getSamples(10000)
-x_train = (np.array([x_pos[-9000:], y_pos[-9000:]]).T + 1) / 2
-x_test = (np.array([x_pos[:1000], y_pos[:1000]]).T + 1) / 2
+n = 10000
+angles, x_pos, y_pos = getSamples(n)
+pos_arr = (np.array([x_pos, y_pos]).T)
+x_train = np.c_[np.array(angles[int(-n * 0.9):]),pos_arr[int(-n * 0.9):]]
+x_test = np.c_[np.array(angles[int(n * 0.1):]),pos_arr[int(n * 0.1):]]
+
+x_train = (pos_arr[int(-n * 0.9):]+1)/2
+x_test = (pos_arr[int(n * 0.1):]+1)/2
+
 
 # Dimension of z space
 z_dim = 1
@@ -57,7 +63,7 @@ autoencoder.fit(
 # Check
 # encode and decode some digits
 # note that we take them from the *test* set
-encoded_val = encoder.predict(x_test*2 -1)
+encoded_val = encoder.predict(x_test * 2 - 1)
 decoded_val = decoder.predict(encoded_val)
 
 plt.scatter(x_test[:, 0], x_test[:, 1])
