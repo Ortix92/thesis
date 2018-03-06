@@ -20,12 +20,12 @@ def getSamples(n):
 
 n = 10000
 angles, x_pos, y_pos = getSamples(n)
-pos_arr = (np.array([x_pos, y_pos]).T)
+pos_arr = (np.array([x_pos, y_pos]).T+1)/2
 x_train = np.c_[np.array(angles[int(-n * 0.9):]), pos_arr[int(-n * 0.9):]]
 x_test = np.c_[np.array(angles[int(n * 0.1):]), pos_arr[int(n * 0.1):]]
 
-x_train = (pos_arr[int(-n * 0.9):] + 1) / 2
-x_test = (pos_arr[int(n * 0.1):] + 1) / 2
+x_train = (pos_arr[int(-n * 0.9):])
+x_test = (pos_arr[int(n * 0.1):])
 
 # Dimension of z space
 z_dim = 1
@@ -60,7 +60,7 @@ log_dir = '/tmp/autoencoder/run_'+ str(time())
 autoencoder.fit(
     x_train,
     x_train,
-    epochs=150,
+    epochs=10,
     batch_size=150,
     shuffle=True,
     callbacks=[TensorBoard(log_dir=(log_dir))],
@@ -69,6 +69,7 @@ autoencoder.fit(
 # encode and decode some digits
 # note that we take them from the *test* set
 encoded_val = encoder.predict(x_test)
+print(encoded_val.shape)
 decoded_val = decoder.predict(encoded_val)
 
 plt.scatter(x_test[:, 0], x_test[:, 1])

@@ -17,11 +17,11 @@ from keras import backend as K
 from keras import metrics
 from keras.datasets import mnist
 
-batch_size = 100
+batch_size = 200
 original_dim = 784
 latent_dim = 2
-intermediate_dim = 256
-epochs = 10
+intermediate_dim = 128
+epochs = 5
 epsilon_std = 1.0
 
 
@@ -61,6 +61,7 @@ vae.summary()
 
 # train the VAE on MNIST digits
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
+
 x_train = x_train.astype('float32') / 255.
 x_test = x_test.astype('float32') / 255.
 x_train = x_train.reshape((len(x_train), np.prod(x_train.shape[1:])))
@@ -100,6 +101,9 @@ grid_y = norm.ppf(np.linspace(0.05, 0.95, n))
 for i, yi in enumerate(grid_x):
     for j, xi in enumerate(grid_y):
         z_sample = np.array([[xi, yi]])
+        print(z_sample)
+        print(z_sample.shape)
+        quit()
         x_decoded = generator.predict(z_sample)
         digit = x_decoded[0].reshape(digit_size, digit_size)
         figure[i * digit_size: (i + 1) * digit_size,

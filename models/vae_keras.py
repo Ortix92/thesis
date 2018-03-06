@@ -3,25 +3,23 @@ from __future__ import print_function
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
-from keras.layers import Input, Dense, Lambda
+from time import time
+from keras.layers import Input, Dense, Lambda, BatchNormalization
 from keras.models import Model
 from keras import backend as K
-from keras import metrics
-from keras.utils import plot_model
-plt.ioff()
-batch_size = 10
+from keras import metrics, optimizers, losses
+from keras.callbacks import TensorBoard
+from keras.datasets import mnist
+
+batch_size = 250
 original_dim = 2
 latent_dim = 2
-intermediate_dim = 1024
-epochs = 50
+intermediate_dim = 256 * 4
+epochs = 500
 epsilon_std = 1.0
+learning_rate = 0.00018
 
-x = Input(shape=(original_dim, ))
-h = Dense(intermediate_dim, activation='relu')(x)
-z_mean = Dense(latent_dim)(h)
-z_log_var = Dense(latent_dim)(h)
-
-
+# Sample unit circle
 def getSamples(n):
     # generate vector of random angles
     angles = np.random.uniform(-np.pi, np.pi, n)
@@ -32,58 +30,81 @@ def getSamples(n):
     return angles, x, y
 
 
+# Implementation of the reparameterization trick
 def sampling(args):
     z_mean, z_log_var = args
     epsilon = K.random_normal(
         shape=(K.shape(z_mean)[0], latent_dim), mean=0., stddev=epsilon_std)
     return z_mean + K.exp(z_log_var / 2) * epsilon
 
+# Encoder section
+x = Input(shape=(original_dim, ))
+x_norm = BatchNormalization(axis=1)(x)
+h = Dense(intermediate_dim, activation='relu')(x_norm)
+h_norm = BatchNormalization(axis=1)(h)
+z_mean = Dense(latent_dim)(h_norm)
+z_log_var = Dense(latent_dim)(h_norm)
 
-# note that "output_shape" isn't necessary with the TensorFlow backend
-z = Lambda(sampling, output_shape=(latent_dim, ))([z_mean, z_log_var])
+# A lambda function/layer for the latent space from which we sample during decoding
+z = Lambda(sampling)([z_mean, z_log_var])
 
-# we instantiate these layers separately so as to reuse them later
+# we instantiate these layers separately so we can reuse them later
+z_norm = BatchNormalization(axis=1)(z)
 decoder_h = Dense(intermediate_dim, activation='relu')
-decoder_mean = Dense(original_dim, activation='sigmoid')
-h_decoded = decoder_h(z)
-x_decoded_mean = decoder_mean(h_decoded)
+decoder_mean = Dense(original_dim, activation='sigmoid', name='output')
+h_decoded = decoder_h(z_norm)
+h_decoded_norm = BatchNormalization(axis=1)(h_decoded)
+x_decoded_mean = decoder_mean(h_decoded_norm)
 
 # instantiate VAE model
 vae = Model(x, x_decoded_mean)
 
-# Compute VAE loss
-xent_loss = original_dim * metrics.mean_squared_error(x, x_decoded_mean)
-kl_loss = -0.5 * K.sum(
-    1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-vae_loss = K.mean(xent_loss + kl_loss)
 
-vae.add_loss(vae_loss)
-vae.compile(optimizer='adam')
+# Compute total loss
+def vae_loss(x, x_decoded_mean):
+    xent_loss = losses.binary_crossentropy(x, x_decoded_mean)
+    kl_loss = -0.5 * K.mean(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
+    return (xent_loss + kl_loss)
+
+optimizer = optimizers.adam(lr=learning_rate)
+vae.compile(optimizer,loss=vae_loss)
 vae.summary()
 
-# Retrieve testing data
-angles, x_pos, y_pos = getSamples(1000)
-x_train = (np.array([x_pos[-900:], y_pos[-900:]]).T+1)/2
-x_test = (np.array([x_pos[:100], y_pos[:100]]).T+1)/2
+# Create training and test data from circle samples
+n = 10000
+angles, x_pos, y_pos = getSamples(n)
+
+# Scale and translate position to conform with sigmoid layer
+pos_arr = (np.array([x_pos, y_pos]).T + 1) / 2
+x_train = (pos_arr[int(-n * 0.9):])
+x_test = (pos_arr[int(n * 0.1):])
+
 vae.fit(
+    x_train,
     x_train,
     shuffle=True,
     epochs=epochs,
     batch_size=batch_size,
-    validation_data=(x_test, None))
+    validation_data=(x_test, x_test))
 
-# build a x-y generator that can sample from the learned distribution
+# build a generator that can sample from the learned distribution
 decoder_input = Input(shape=(latent_dim, ))
 _h_decoded = decoder_h(decoder_input)
 _x_decoded_mean = decoder_mean(_h_decoded)
 generator = Model(decoder_input, _x_decoded_mean)
 
-x_gen = np.zeros((1000, 2))
-for i in range(1000):
-    x_gen[i] = generator.predict(
-        np.array([[np.random.normal(0, 1),
-                   np.random.normal(0, 1)]]))
+# Sample from noise and generate new points
+if (latent_dim == 1):
+    noise = np.random.normal(size=(n, 1))
+else:
+    noise = np.random.multivariate_normal(
+        np.zeros((latent_dim)), np.eye(latent_dim), n)
 
-plt.scatter(x_gen[:, 0], x_gen[:, 1])
-plt.scatter(x_pos,y_pos)
+x_decoded = np.zeros((n, original_dim))
+for i in range(n):
+    z_sample = np.array([noise[i, :]])
+    x_decoded[i, :] = generator.predict(z_sample)
+
+print('Displaying graph')
+plt.scatter(x_decoded[:, 0], x_decoded[:, 1])
 plt.show()
