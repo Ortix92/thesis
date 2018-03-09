@@ -55,15 +55,15 @@ class GAN():
         model = Sequential()
 
         model.add(Dense(256, input_shape=noise_shape))
-        model.add(LeakyReLU(alpha=0.2))
+        model.add(LeakyReLU(alpha=0.1))
         model.add(BatchNormalization(momentum=0.8))
         model.add(Dense(512))
-        model.add(LeakyReLU(alpha=0.2))
+        model.add(LeakyReLU(alpha=0.1))
         model.add(BatchNormalization(momentum=0.8))
         model.add(Dense(1024))
-        model.add(LeakyReLU(alpha=0.2))
+        model.add(LeakyReLU(alpha=0.1))
         model.add(BatchNormalization(momentum=0.8))
-        model.add(Dense(np.prod(self.shape), activation='tanh'))
+        model.add(Dense(2, activation='tanh'))
         model.add(Reshape(self.shape))
 
         model.summary()
@@ -80,9 +80,9 @@ class GAN():
 
         model.add(Flatten(input_shape=shape))
         model.add(Dense(512))
-        model.add(LeakyReLU(alpha=0.2))
+        model.add(LeakyReLU(alpha=0.1))
         model.add(Dense(256))
-        model.add(LeakyReLU(alpha=0.2))
+        model.add(LeakyReLU(alpha=0.1))
         model.add(Dense(1, activation='sigmoid'))
 
         print('Discriminator:')
@@ -103,16 +103,13 @@ class GAN():
         y = np.sin(angles)
         return angles, x, y
 
-    def train(self, epochs, batch_size=128, save_interval=50):
+    def train(self, epochs, batch_size=128, save_interval=100):
 
         # Load the dataset
-        n = 60000
+        n = 10000
         angles, x_pos, y_pos = self.getSamples(n)
-        pos_arr = (np.array([x_pos, y_pos]).T + 1) / 2
-        X_train = (pos_arr[int(-n * 0.9):])
-        X_test = (pos_arr[int(n * 0.1):])
+        X_train = (np.array([x_pos, y_pos]).T)
         X_train = np.expand_dims(X_train, axis=3)
-
         half_batch = int(batch_size / 2)
 
         for epoch in range(epochs):
@@ -123,9 +120,8 @@ class GAN():
 
             # Select a random half batch of images
             idx = np.random.randint(0, X_train.shape[0], half_batch)
-
             points = X_train[idx]
-
+            # arr = np.linalg.norm(points,axis=1)
             noise = np.random.normal(0, 1, (half_batch, 100))
 
             # Generate a half batch of new images
@@ -155,27 +151,18 @@ class GAN():
             if (epoch % 10 == 0):
                 print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" %
                       (epoch, d_loss[0], 100 * d_loss[1], g_loss))
+            if epoch % save_interval == 0:
+                self.save_imgs(epoch)
 
     def save_imgs(self, epoch):
-        r, c = 5, 5
-        noise = np.random.normal(0, 1, (r * c, 100))
-        gen_imgs = self.generator.predict(noise)
-
-        # Rescale images 0 - 1
-        gen_imgs = 0.5 * gen_imgs + 0.5
-
-        fig, axs = plt.subplots(r, c)
-        cnt = 0
-        for i in range(r):
-            for j in range(c):
-                axs[i, j].imshow(gen_imgs[cnt, :, :, 0], cmap='gray')
-                axs[i, j].axis('off')
-                cnt += 1
-        fig.savefig("./mnist_%d.png" % epoch)
+        noise = np.random.normal(0, 1, (10000, 100))
+        samples = self.generator.predict(noise)
+        samples = np.squeeze(samples, axis=2)
+        plt.scatter(samples[:, 0], samples[:, 1])
+        plt.savefig("./images/gan_%d.png" % epoch)
         plt.close()
-
 
 if __name__ == '__main__':
     gan = GAN()
-    gan.train(epochs=1000, batch_size=100, save_interval=200)
+    gan.train(epochs=2000, batch_size=5, save_interval=200)
     gan.generator.save('gan_trained.h5')
