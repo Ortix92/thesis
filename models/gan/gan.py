@@ -56,14 +56,14 @@ class GAN():
 
         model.add(Dense(256, input_shape=noise_shape))
         model.add(LeakyReLU(alpha=0.1))
-        model.add(BatchNormalization(momentum=0.8))
+        model.add(BatchNormalization(momentum=0.6))
         model.add(Dense(512))
         model.add(LeakyReLU(alpha=0.1))
-        model.add(BatchNormalization(momentum=0.8))
+        model.add(BatchNormalization(momentum=0.6))
         model.add(Dense(1024))
         model.add(LeakyReLU(alpha=0.1))
-        model.add(BatchNormalization(momentum=0.8))
-        model.add(Dense(2, activation='tanh'))
+        model.add(BatchNormalization(momentum=0.6))
+        model.add(Dense(2, activation='sigmoid'))
         model.add(Reshape(self.shape))
 
         model.summary()
@@ -96,7 +96,7 @@ class GAN():
     # Sample unit circle
     def getSamples(self, n):
         # generate vector of random angles
-        angles = np.random.uniform(-np.pi, np.pi, n)
+        angles = np.random.uniform(0, 2*np.pi, n)
 
         # generate matrix of x and y coordinates
         x = np.cos(angles)
@@ -108,7 +108,7 @@ class GAN():
         # Load the dataset
         n = 10000
         angles, x_pos, y_pos = self.getSamples(n)
-        X_train = (np.array([x_pos, y_pos]).T)
+        X_train = (np.array([x_pos, y_pos]).T +1) /2
         X_train = np.expand_dims(X_train, axis=3)
         half_batch = int(batch_size / 2)
 
@@ -164,5 +164,5 @@ class GAN():
 
 if __name__ == '__main__':
     gan = GAN()
-    gan.train(epochs=2000, batch_size=5, save_interval=200)
+    gan.train(epochs=5000, batch_size=200, save_interval=200)
     gan.generator.save('gan_trained.h5')
