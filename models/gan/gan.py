@@ -164,5 +164,5 @@ class GAN():
 
 if __name__ == '__main__':
     gan = GAN()
-    gan.train(epochs=5000, batch_size=100, save_interval=200)
+    gan.train(epochs=5000, batch_size=50, save_interval=200)
     gan.generator.save('gan_trained.h5')
