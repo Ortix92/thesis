@@ -6,7 +6,7 @@ from keras.layers import BatchNormalization, Activation, ZeroPadding2D
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.convolutional import UpSampling2D, Conv2D
 from keras.models import Sequential, Model
-from keras.optimizers import Adam
+from keras.optimizers import RMSprop
 
 import matplotlib.pyplot as plt
 
@@ -19,7 +19,7 @@ class GAN():
     def __init__(self):
         self.shape = (2, 1)
 
-        optimizer = Adam(0.0002)
+        optimizer = RMSprop(0.002)
 
         # Build and compile the discriminator
         self.discriminator = self.build_discriminator()
@@ -56,13 +56,13 @@ class GAN():
 
         model.add(Dense(256, input_shape=noise_shape))
         model.add(LeakyReLU(alpha=0.1))
-        model.add(BatchNormalization(momentum=0.6))
+        model.add(BatchNormalization(momentum=0.1))
         model.add(Dense(512))
         model.add(LeakyReLU(alpha=0.1))
-        model.add(BatchNormalization(momentum=0.6))
+        model.add(BatchNormalization(momentum=0.1))
         model.add(Dense(1024))
         model.add(LeakyReLU(alpha=0.1))
-        model.add(BatchNormalization(momentum=0.6))
+        model.add(BatchNormalization(momentum=0.1))
         model.add(Dense(2, activation='sigmoid'))
         model.add(Reshape(self.shape))
 
@@ -158,11 +158,11 @@ class GAN():
         noise = np.random.normal(0, 1, (10000, 100))
         samples = self.generator.predict(noise)
         samples = np.squeeze(samples, axis=2)
-        plt.scatter(samples[:, 0], samples[:, 1])
+        plt.scatter(samples[:, 0], samples[:, 1], s=1)
         plt.savefig("./images/gan_%d.png" % epoch)
         plt.close()
 
 if __name__ == '__main__':
     gan = GAN()
-    gan.train(epochs=5000, batch_size=200, save_interval=200)
+    gan.train(epochs=5000, batch_size=100, save_interval=200)
     gan.generator.save('gan_trained.h5')

@@ -15,9 +15,6 @@ def getSamples(n):
 
 angles, x,y = getSamples(200)
 
-plt.scatter(x,y)
-plt.show()
-
 generator = load_model('gan_trained.h5')
 generator.summary()
 
@@ -25,7 +22,6 @@ generator.summary()
 noise = np.random.normal(0, 1, (10000, 100))
 samples = generator.predict(noise)
 samples = np.squeeze(samples, axis=2)
-print(samples.shape)
-print(samples[0:10, :])
-plt.scatter(samples[:, 0], samples[:, 1])
+
+plt.scatter(samples[:, 0], samples[:, 1], s=1)
 plt.show()
