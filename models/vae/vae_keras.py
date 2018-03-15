@@ -1,25 +1,23 @@
-from __future__ import print_function
+# VAE Spiral Keras
+from keras.layers import Input, Dense, Lambda, BatchNormalization
+from keras.models import Model
+from sklearn import cluster, datasets, mixture
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import norm
-from time import time
-from keras.layers import Input, Dense, Lambda, BatchNormalization
-from keras.models import Model
-from keras import backend as K
-from keras import metrics, optimizers, losses
-from keras.callbacks import TensorBoard
-from keras.datasets import mnist
+import keras.backend as K
+from keras import losses
+import keras
 
-batch_size = 250
-original_dim = 2
-latent_dim = 2
-intermediate_dim = 256 * 4
-epochs = 500
-epsilon_std = 1.0
-learning_rate = 0.00018
+mini_batch_size = 100
+n_z = 2
+n_epoch = 5
+nb_hidden_unit = 256
+data_number = 5000
+learning_rate = 0.0002
+kl_introduction_proportion = 800
 
-# Sample unit circle
+
 def getSamples(n):
     # generate vector of random angles
     angles = np.random.uniform(-np.pi, np.pi, n)
@@ -30,81 +28,181 @@ def getSamples(n):
     return angles, x, y
 
 
-# Implementation of the reparameterization trick
-def sampling(args):
-    z_mean, z_log_var = args
-    epsilon = K.random_normal(
-        shape=(K.shape(z_mean)[0], latent_dim), mean=0., stddev=epsilon_std)
-    return z_mean + K.exp(z_log_var / 2) * epsilon
-
-# Encoder section
-x = Input(shape=(original_dim, ))
-x_norm = BatchNormalization(axis=1)(x)
-h = Dense(intermediate_dim, activation='relu')(x_norm)
-h_norm = BatchNormalization(axis=1)(h)
-z_mean = Dense(latent_dim)(h_norm)
-z_log_var = Dense(latent_dim)(h_norm)
-
-# A lambda function/layer for the latent space from which we sample during decoding
-z = Lambda(sampling)([z_mean, z_log_var])
-
-# we instantiate these layers separately so we can reuse them later
-z_norm = BatchNormalization(axis=1)(z)
-decoder_h = Dense(intermediate_dim, activation='relu')
-decoder_mean = Dense(original_dim, activation='sigmoid', name='output')
-h_decoded = decoder_h(z_norm)
-h_decoded_norm = BatchNormalization(axis=1)(h_decoded)
-x_decoded_mean = decoder_mean(h_decoded_norm)
-
-# instantiate VAE model
-vae = Model(x, x_decoded_mean)
-
-
-# Compute total loss
-def vae_loss(x, x_decoded_mean):
-    xent_loss = losses.binary_crossentropy(x, x_decoded_mean)
-    kl_loss = -0.5 * K.mean(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-    return (xent_loss + kl_loss)
-
-optimizer = optimizers.adam(lr=learning_rate)
-vae.compile(optimizer,loss=vae_loss)
-vae.summary()
-
-# Create training and test data from circle samples
-n = 10000
-angles, x_pos, y_pos = getSamples(n)
-
+angles, x_pos, y_pos = getSamples(data_number)
 # Scale and translate position to conform with sigmoid layer
 pos_arr = (np.array([x_pos, y_pos]).T + 1) / 2
-x_train = (pos_arr[int(-n * 0.9):])
-x_test = (pos_arr[int(n * 0.1):])
+x_train = (pos_arr[int(-data_number * 0.9):])
+x_test = (pos_arr[int(data_number * 0.1):])
 
+# Q(z|X) -- encoder
+inputs = Input(shape=(2, ))
+input_norm = BatchNormalization(axis=1)(inputs)
+h_q = Dense(nb_hidden_unit, activation='relu')(input_norm)
+h_q_norm = keras.layers.BatchNormalization(axis=1)(h_q)
+h_q_2 = Dense(nb_hidden_unit, activation='relu')(h_q_norm)
+h_q_2_norm = keras.layers.BatchNormalization(axis=1)(h_q)
+mu = Dense(n_z, activation='linear')(h_q_2_norm)
+log_sigma = Dense(n_z, activation='linear')(h_q_2_norm)
+
+
+def sample_z(args):
+    mu, log_sigma = args
+    eps = K.random_normal(shape=(mini_batch_size, n_z), mean=0., stddev=1.)
+    return mu + K.exp(log_sigma / 2) * eps
+
+
+# Sample z ~ Q(z|X)
+z = Lambda(sample_z)([mu, log_sigma])
+
+# P(X|z) -- decoder
+normalize_z = keras.layers.BatchNormalization(axis=1)
+decoder_hidden = Dense(nb_hidden_unit, activation='relu')
+decoder_hidden_norm = keras.layers.BatchNormalization(axis=1)
+decoder_hidden_2 = Dense(nb_hidden_unit, activation='relu')
+decoder_hidden_2_norm = keras.layers.BatchNormalization(axis=1)
+decoder_mu = Dense(2, activation='linear')
+decoder_sigma = Dense(2, activation='linear')
+
+norm_z = normalize_z(z)
+h_p = decoder_hidden(norm_z)
+h_p_norm = decoder_hidden_norm(h_p)
+h_p_2 = decoder_hidden_2(h_p_norm)
+h_p_2_norm = decoder_hidden_2_norm(h_p_2)
+mu_decoder = decoder_mu(h_p_2_norm)
+std_decoder = decoder_sigma(h_p_2_norm)
+
+alpha = K.variable(1.)
+
+# Overall VAE model, for reconstruction and training
+vae = Model(inputs, mu_decoder)
+vae.summary()
+# Encoder model, to encode input into latent variable
+# We use the mean as the output as it is the center point, the representative of the gaussian
+encoder = Model(inputs, mu)
+
+# Generator model, generate new data given latent variable z
+d_in = Input(shape=(n_z, ))
+d_in_norm = normalize_z(d_in)
+d_h = decoder_hidden(d_in_norm)
+d_h_norm = decoder_hidden_norm(d_h)
+d_h_2 = decoder_hidden_2(d_h_norm)
+d_h_2_norm = decoder_hidden_2_norm(d_h_2)
+d_out = decoder_mu(d_h_2_norm)
+d_std_out = decoder_sigma(d_h_2_norm)
+
+decoder = Model(d_in, [d_out, d_std_out])
+
+
+def vae_loss(y_true, y_pred):
+    """ Calculate loss = reconstruction loss + KL loss for each data in minibatch """
+    # E[log P(X|z)] here a Gaussian BCE
+    recon = -K.log(2 * np.pi) - 0.5 * K.sum(
+        std_decoder, axis=1) - 0.5 * K.sum(
+            (K.square(inputs - mu_decoder) / (K.exp(std_decoder))), axis=1)
+
+    # D_KL(Q(z|X) || P(z|X)); calculate in closed form as both dist. are Gaussian
+    kl_loss = 0.5 * (
+        K.sum(1 + log_sigma - K.square(mu) - K.exp(log_sigma), axis=1))
+    return (data_number / mini_batch_size) * -K.sum(alpha*kl_loss + recon, axis=0)
+
+
+def kl_loss(y_true, y_pred):
+    kl_loss = 0.5 * (
+        K.sum(1 + log_sigma - K.square(mu) - K.exp(log_sigma), axis=1))
+    return (data_number / mini_batch_size) * -K.sum(alpha*kl_loss, axis=0)
+
+
+def loss_recon(y_true, y_pred):
+    recon = -K.log(2 * np.pi) - 0.5 * K.sum(
+        std_decoder, axis=1) - 0.5 * K.sum(
+            (K.square(inputs - mu_decoder) / (K.exp(std_decoder))), axis=1)
+    return (data_number / mini_batch_size) * -K.sum(recon, axis=0)
+
+
+# Callback function
+class LossHistory(keras.callbacks.Callback):
+    def __init__(self, alpha):
+        self.alpha = alpha
+
+    def on_train_begin(self, logs={}):
+        print("Begin Training")
+        self.losses = []
+        self.losses_recon = []
+        self.losses_kl = []
+
+    def on_epoch_end(self, epoch, logs={}):
+        self.losses.append(logs.get('loss'))
+        self.losses_recon.append(logs.get('loss_recon'))
+        self.losses_kl.append(logs.get("kl_loss"))
+
+        K.set_value(self.alpha,
+                    np.min([kl_introduction_proportion,
+                            (epoch)]) / (kl_introduction_proportion))
+        print("Alpha:", K.get_value(alpha))
+
+    def on_train_end(self, logs=None):
+        return
+        line_kl_recon, = plt.plot(
+            self.losses[5:], label="KL + Reconstruction loss")
+        #print(self.losses_kl)
+        line_kl, = plt.plot(self.losses_kl[5:], label="KL loss")
+        line_recon, = plt.plot(
+            self.losses_recon[5:], label="Reconstruction loss")
+        plt.ylabel('Loss')
+        plt.xlabel('Epoch')
+
+        plt.legend(handles=[line_kl_recon, line_kl, line_recon])
+
+        plt.plot(self.losses_recon)
+
+        plt.show()
+
+
+history = LossHistory(alpha)
+
+optimizer = keras.optimizers.rmsprop(lr=learning_rate)
+vae.compile(optimizer, vae_loss, metrics=[kl_loss, loss_recon])
+# vae.compile(optimizer,loss='binary_crossentropy')
 vae.fit(
     x_train,
     x_train,
-    shuffle=True,
-    epochs=epochs,
-    batch_size=batch_size,
-    callbacks=[history],)
+    batch_size=mini_batch_size,
+    epochs=n_epoch,
+    callbacks=[history],
+    shuffle=True)
+    
+#####################################################
+### Visualise 
+#####################################################
 
-# build a generator that can sample from the learned distribution
-decoder_input = Input(shape=(latent_dim, ))
-_h_decoded = decoder_h(decoder_input)
-_x_decoded_mean = decoder_mean(_h_decoded)
-generator = Model(decoder_input, _x_decoded_mean)
+# Encode datapoints
+means = encoder.predict(x_test)
+plt.figure()
+plt.title('Encoded means')
+plt.ylabel('z2')
+plt.xlabel('z1')
+plt.scatter(means[:, 0], means[:, 1], s=0.5, alpha=0.5)
 
-# Sample from noise and generate new points
-if (latent_dim == 1):
-    noise = np.random.normal(size=(n, 1))
-else:
-    noise = np.random.multivariate_normal(
-        np.zeros((latent_dim)), np.eye(latent_dim), n)
+# Decode means
+[decoded_mean, decoded_variance] = decoder.predict(means)
+plt.figure()
+plt.title('Reconstructed means')
+plt.ylabel('x2')
+plt.xlabel('x1')
+plt.scatter(decoded_mean[:, 0], decoded_mean[:, 1], s=0.5, c="red")
 
-x_decoded = np.zeros((n, original_dim))
-for i in range(n):
-    z_sample = np.array([noise[i, :]])
-    x_decoded[i, :] = generator.predict(z_sample)
+# Generate random points
+plt.figure()
+plt.title('Random point generation from random latent space')
+plt.ylabel('x2')
+plt.xlabel('x1')
 
-print('Displaying graph')
-plt.scatter(x_decoded[:, 0], x_decoded[:, 1])
+random_means = np.random.normal(loc=0, scale=1.0, size=[10000, 2])
+[decoded_random_means,
+ decoded_random_variances] = decoder.predict(random_means)
+
+decoded_random = decoded_random_means + np.exp(
+    decoded_random_variances / 2) * np.random.normal(
+        loc=0, scale=1.0, size=[10000, 2])
+plt.scatter(decoded_random[:, 0], decoded_random[:, 1], s=0.5, c="orange")
 plt.show()
