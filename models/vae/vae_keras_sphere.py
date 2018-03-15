@@ -2,6 +2,7 @@
 from keras.layers import Input, Dense, Lambda, BatchNormalization
 from keras.models import Model
 from sklearn import cluster, datasets, mixture
+from mpl_toolkits.mplot3d import Axes3D
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,24 +19,19 @@ learning_rate = 0.0002
 kl_introduction_proportion = 800
 
 
-def getSamples(n):
-    # generate vector of random angles
-    angles = np.random.uniform(-np.pi, np.pi, n)
-
-    # generate matrix of x and y coordinates
-    x = np.cos(angles)
-    y = np.sin(angles)
-    return angles, x, y
+def sample_spherical(npoints, ndim=3):
+    vec = np.random.randn(ndim, npoints)
+    vec /= np.linalg.norm(vec, axis=0)
+    return vec
 
 
-angles, x_pos, y_pos = getSamples(data_number)
+pos_arr = sample_spherical(10000).T
 # Scale and translate position to conform with sigmoid layer
-pos_arr = (np.array([x_pos, y_pos]).T + 1) / 2
 x_train = (pos_arr[int(-data_number * 0.9):])
 x_test = (pos_arr[int(data_number * 0.1):])
 
 # Q(z|X) -- encoder
-inputs = Input(shape=(2, ))
+inputs = Input(shape=(3, ))
 input_norm = BatchNormalization(axis=1)(inputs)
 h_q = Dense(nb_hidden_unit, activation='relu')(input_norm)
 h_q_norm = keras.layers.BatchNormalization(axis=1)(h_q)
@@ -60,8 +56,8 @@ decoder_hidden = Dense(nb_hidden_unit, activation='relu')
 decoder_hidden_norm = keras.layers.BatchNormalization(axis=1)
 # decoder_hidden_2 = Dense(nb_hidden_unit, activation='relu')
 # decoder_hidden_2_norm = keras.layers.BatchNormalization(axis=1)
-decoder_mu = Dense(2, activation='linear')
-decoder_sigma = Dense(2, activation='linear')
+decoder_mu = Dense(3, activation='linear')
+decoder_sigma = Dense(3, activation='linear')
 
 norm_z = normalize_z(z)
 h_p = decoder_hidden(norm_z)
@@ -203,6 +199,9 @@ random_means = np.random.normal(loc=0, scale=1.0, size=[10000, 2])
 
 decoded_random = decoded_random_means + np.exp(
     decoded_random_variances / 2) * np.random.normal(
-        loc=0, scale=1.0, size=[10000, 2])
-plt.scatter(decoded_random[:, 0], decoded_random[:, 1], s=0.5, c="orange")
+        loc=0, scale=1.0, size=[10000, 3])
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.scatter(decoded_random[:, 0], decoded_random[:, 1], decoded_random[:, 2], s=0.2)
 plt.show()
