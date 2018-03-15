@@ -11,7 +11,7 @@ import keras
 
 mini_batch_size = 100
 n_z = 2
-n_epoch = 5
+n_epoch = 150
 nb_hidden_unit = 256
 data_number = 5000
 learning_rate = 0.0002
@@ -39,10 +39,10 @@ inputs = Input(shape=(2, ))
 input_norm = BatchNormalization(axis=1)(inputs)
 h_q = Dense(nb_hidden_unit, activation='relu')(input_norm)
 h_q_norm = keras.layers.BatchNormalization(axis=1)(h_q)
-h_q_2 = Dense(nb_hidden_unit, activation='relu')(h_q_norm)
-h_q_2_norm = keras.layers.BatchNormalization(axis=1)(h_q)
-mu = Dense(n_z, activation='linear')(h_q_2_norm)
-log_sigma = Dense(n_z, activation='linear')(h_q_2_norm)
+# h_q_2 = Dense(nb_hidden_unit, activation='relu')(h_q_norm)
+# h_q_2_norm = keras.layers.BatchNormalization(axis=1)(h_q)
+mu = Dense(n_z, activation='linear')(h_q_norm)
+log_sigma = Dense(n_z, activation='linear')(h_q_norm)
 
 
 def sample_z(args):
@@ -58,18 +58,18 @@ z = Lambda(sample_z)([mu, log_sigma])
 normalize_z = keras.layers.BatchNormalization(axis=1)
 decoder_hidden = Dense(nb_hidden_unit, activation='relu')
 decoder_hidden_norm = keras.layers.BatchNormalization(axis=1)
-decoder_hidden_2 = Dense(nb_hidden_unit, activation='relu')
-decoder_hidden_2_norm = keras.layers.BatchNormalization(axis=1)
+# decoder_hidden_2 = Dense(nb_hidden_unit, activation='relu')
+# decoder_hidden_2_norm = keras.layers.BatchNormalization(axis=1)
 decoder_mu = Dense(2, activation='linear')
 decoder_sigma = Dense(2, activation='linear')
 
 norm_z = normalize_z(z)
 h_p = decoder_hidden(norm_z)
 h_p_norm = decoder_hidden_norm(h_p)
-h_p_2 = decoder_hidden_2(h_p_norm)
-h_p_2_norm = decoder_hidden_2_norm(h_p_2)
-mu_decoder = decoder_mu(h_p_2_norm)
-std_decoder = decoder_sigma(h_p_2_norm)
+# h_p_2 = decoder_hidden_2(h_p_norm)
+# h_p_2_norm = decoder_hidden_2_norm(h_p_2)
+mu_decoder = decoder_mu(h_p_norm)
+std_decoder = decoder_sigma(h_p_norm)
 
 alpha = K.variable(1.)
 
@@ -85,10 +85,10 @@ d_in = Input(shape=(n_z, ))
 d_in_norm = normalize_z(d_in)
 d_h = decoder_hidden(d_in_norm)
 d_h_norm = decoder_hidden_norm(d_h)
-d_h_2 = decoder_hidden_2(d_h_norm)
-d_h_2_norm = decoder_hidden_2_norm(d_h_2)
-d_out = decoder_mu(d_h_2_norm)
-d_std_out = decoder_sigma(d_h_2_norm)
+# d_h_2 = decoder_hidden_2(d_h_norm)
+# d_h_2_norm = decoder_hidden_2_norm(d_h_2)
+d_out = decoder_mu(d_h_norm)
+d_std_out = decoder_sigma(d_h_norm)
 
 decoder = Model(d_in, [d_out, d_std_out])
 
@@ -103,20 +103,20 @@ def vae_loss(y_true, y_pred):
     # D_KL(Q(z|X) || P(z|X)); calculate in closed form as both dist. are Gaussian
     kl_loss = 0.5 * (
         K.sum(1 + log_sigma - K.square(mu) - K.exp(log_sigma), axis=1))
-    return (data_number / mini_batch_size) * -K.sum(alpha*kl_loss + recon, axis=0)
+    return -K.mean(alpha * kl_loss + recon, axis=0)
 
 
 def kl_loss(y_true, y_pred):
     kl_loss = 0.5 * (
         K.sum(1 + log_sigma - K.square(mu) - K.exp(log_sigma), axis=1))
-    return (data_number / mini_batch_size) * -K.sum(alpha*kl_loss, axis=0)
+    return -K.mean(alpha * kl_loss, axis=0)
 
 
 def loss_recon(y_true, y_pred):
     recon = -K.log(2 * np.pi) - 0.5 * K.sum(
         std_decoder, axis=1) - 0.5 * K.sum(
             (K.square(inputs - mu_decoder) / (K.exp(std_decoder))), axis=1)
-    return (data_number / mini_batch_size) * -K.sum(recon, axis=0)
+    return -K.mean(recon, axis=0)
 
 
 # Callback function
@@ -135,13 +135,13 @@ class LossHistory(keras.callbacks.Callback):
         self.losses_recon.append(logs.get('loss_recon'))
         self.losses_kl.append(logs.get("kl_loss"))
 
+        # Alpha is a regularizer to slow down learning at the beginning
         K.set_value(self.alpha,
                     np.min([kl_introduction_proportion,
                             (epoch)]) / (kl_introduction_proportion))
         print("Alpha:", K.get_value(alpha))
 
     def on_train_end(self, logs=None):
-        return
         line_kl_recon, = plt.plot(
             self.losses[5:], label="KL + Reconstruction loss")
         #print(self.losses_kl)
@@ -170,9 +170,9 @@ vae.fit(
     epochs=n_epoch,
     callbacks=[history],
     shuffle=True)
-    
+
 #####################################################
-### Visualise 
+### Visualise
 #####################################################
 
 # Encode datapoints
