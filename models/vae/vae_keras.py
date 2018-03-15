@@ -85,7 +85,7 @@ vae.fit(
     shuffle=True,
     epochs=epochs,
     batch_size=batch_size,
-    validation_data=(x_test, x_test))
+    callbacks=[history],)
 
 # build a generator that can sample from the learned distribution
 decoder_input = Input(shape=(latent_dim, ))
