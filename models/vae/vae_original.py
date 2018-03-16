@@ -15,6 +15,7 @@ from keras.layers import Input, Dense, Lambda
 from keras.models import Model
 from keras import backend as K
 from keras import metrics
+import keras
 from keras.datasets import mnist
 
 batch_size = 200
@@ -24,8 +25,7 @@ intermediate_dim = 128
 epochs = 5
 epsilon_std = 1.0
 
-
-x = Input(shape=(original_dim,))
+x = Input(shape=(original_dim, ))
 h = Dense(intermediate_dim, activation='relu')(x)
 z_mean = Dense(latent_dim)(h)
 z_log_var = Dense(latent_dim)(h)
@@ -33,12 +33,13 @@ z_log_var = Dense(latent_dim)(h)
 
 def sampling(args):
     z_mean, z_log_var = args
-    epsilon = K.random_normal(shape=(K.shape(z_mean)[0], latent_dim), mean=0.,
-                              stddev=epsilon_std)
+    epsilon = K.random_normal(
+        shape=(K.shape(z_mean)[0], latent_dim), mean=0., stddev=epsilon_std)
     return z_mean + K.exp(z_log_var / 2) * epsilon
 
+
 # note that "output_shape" isn't necessary with the TensorFlow backend
-z = Lambda(sampling, output_shape=(latent_dim,))([z_mean, z_log_var])
+z = Lambda(sampling, output_shape=(latent_dim, ))([z_mean, z_log_var])
 
 # we instantiate these layers separately so as to reuse them later
 decoder_h = Dense(intermediate_dim, activation='relu')
@@ -49,15 +50,17 @@ x_decoded_mean = decoder_mean(h_decoded)
 # instantiate VAE model
 vae = Model(x, x_decoded_mean)
 
+
 # Compute VAE loss
-xent_loss = original_dim * metrics.binary_crossentropy(x, x_decoded_mean)
-kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-vae_loss = K.mean(xent_loss + kl_loss)
+def vae_loss(x, x_decoded_mean):
+    recon_loss = -K.sum(x * K.log(1e-10 + x_decoded_mean) + (1-x) * K.log(1e-10 + 1 - x_decoded_mean), axis=1)
+    kl_loss = -0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
+    return K.mean(recon_loss + kl_loss)
 
-vae.add_loss(vae_loss)
-vae.compile(optimizer='rmsprop')
+
+optimizer = keras.optimizers.rmsprop()
+vae.compile(optimizer=optimizer, loss=vae_loss)
 vae.summary()
-
 
 # train the VAE on MNIST digits
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -67,11 +70,13 @@ x_test = x_test.astype('float32') / 255.
 x_train = x_train.reshape((len(x_train), np.prod(x_train.shape[1:])))
 x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
 
-vae.fit(x_train,
-        shuffle=True,
-        epochs=epochs,
-        batch_size=batch_size,
-        validation_data=(x_test, None))
+vae.fit(
+    x_train,
+    x_train,
+    shuffle=True,
+    epochs=epochs,
+    batch_size=batch_size,
+    validation_data=(x_test, x_test))
 
 # build a model to project inputs on the latent space
 encoder = Model(x, z_mean)
@@ -84,7 +89,7 @@ plt.colorbar()
 plt.show()
 
 # build a digit generator that can sample from the learned distribution
-decoder_input = Input(shape=(latent_dim,))
+decoder_input = Input(shape=(latent_dim, ))
 _h_decoded = decoder_h(decoder_input)
 _x_decoded_mean = decoder_mean(_h_decoded)
 generator = Model(decoder_input, _x_decoded_mean)
@@ -101,13 +106,10 @@ grid_y = norm.ppf(np.linspace(0.05, 0.95, n))
 for i, yi in enumerate(grid_x):
     for j, xi in enumerate(grid_y):
         z_sample = np.array([[xi, yi]])
-        print(z_sample)
-        print(z_sample.shape)
-        quit()
         x_decoded = generator.predict(z_sample)
         digit = x_decoded[0].reshape(digit_size, digit_size)
-        figure[i * digit_size: (i + 1) * digit_size,
-               j * digit_size: (j + 1) * digit_size] = digit
+        figure[i * digit_size:(i + 1) * digit_size, j * digit_size:(
+            j + 1) * digit_size] = digit
 
 plt.figure(figsize=(10, 10))
 plt.imshow(figure, cmap='Greys_r')

@@ -35,8 +35,6 @@ inputs = Input(shape=(3, ))
 input_norm = BatchNormalization(axis=1)(inputs)
 h_q = Dense(nb_hidden_unit, activation='relu')(input_norm)
 h_q_norm = keras.layers.BatchNormalization(axis=1)(h_q)
-# h_q_2 = Dense(nb_hidden_unit, activation='relu')(h_q_norm)
-# h_q_2_norm = keras.layers.BatchNormalization(axis=1)(h_q)
 mu = Dense(n_z, activation='linear')(h_q_norm)
 log_sigma = Dense(n_z, activation='linear')(h_q_norm)
 
@@ -54,16 +52,12 @@ z = Lambda(sample_z)([mu, log_sigma])
 normalize_z = keras.layers.BatchNormalization(axis=1)
 decoder_hidden = Dense(nb_hidden_unit, activation='relu')
 decoder_hidden_norm = keras.layers.BatchNormalization(axis=1)
-# decoder_hidden_2 = Dense(nb_hidden_unit, activation='relu')
-# decoder_hidden_2_norm = keras.layers.BatchNormalization(axis=1)
 decoder_mu = Dense(3, activation='linear')
 decoder_sigma = Dense(3, activation='linear')
 
 norm_z = normalize_z(z)
 h_p = decoder_hidden(norm_z)
 h_p_norm = decoder_hidden_norm(h_p)
-# h_p_2 = decoder_hidden_2(h_p_norm)
-# h_p_2_norm = decoder_hidden_2_norm(h_p_2)
 mu_decoder = decoder_mu(h_p_norm)
 std_decoder = decoder_sigma(h_p_norm)
 
@@ -81,8 +75,6 @@ d_in = Input(shape=(n_z, ))
 d_in_norm = normalize_z(d_in)
 d_h = decoder_hidden(d_in_norm)
 d_h_norm = decoder_hidden_norm(d_h)
-# d_h_2 = decoder_hidden_2(d_h_norm)
-# d_h_2_norm = decoder_hidden_2_norm(d_h_2)
 d_out = decoder_mu(d_h_norm)
 d_std_out = decoder_sigma(d_h_norm)
 
@@ -95,7 +87,7 @@ def vae_loss(y_true, y_pred):
     recon = -K.log(2 * np.pi) - 0.5 * K.sum(
         std_decoder, axis=1) - 0.5 * K.sum(
             (K.square(inputs - mu_decoder) / (K.exp(std_decoder))), axis=1)
-
+            
     # D_KL(Q(z|X) || P(z|X)); calculate in closed form as both dist. are Gaussian
     kl_loss = 0.5 * (
         K.sum(1 + log_sigma - K.square(mu) - K.exp(log_sigma), axis=1))
@@ -203,5 +195,6 @@ decoded_random = decoded_random_means + np.exp(
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-ax.scatter(decoded_random[:, 0], decoded_random[:, 1], decoded_random[:, 2], s=0.2)
+ax.scatter(
+    decoded_random[:, 0], decoded_random[:, 1], decoded_random[:, 2], s=0.2)
 plt.show()
