@@ -22,7 +22,7 @@ batch_size = 200
 original_dim = 784
 latent_dim = 2
 intermediate_dim = 128
-epochs = 5
+epochs = 100
 epsilon_std = 1.0
 
 x = Input(shape=(original_dim, ))
