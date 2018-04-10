@@ -1,9 +1,8 @@
-from training import TrajectoryGenerator
+from utils import TrajectoryGenerator
+from utils import Robot
+import numpy as np
 
-T = TrajectoryGenerator()
+robot = Robot()
 
-p = T.getPointsOnSurface(1)
-
-print(p)
-
+robot.draw()
 
